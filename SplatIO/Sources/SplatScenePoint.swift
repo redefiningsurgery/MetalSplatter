@@ -27,18 +27,31 @@ public struct SplatScenePoint {
     public var opacity: Float
     public var scale: SIMD3<Float>
     public var rotation: simd_quatf
+// Add support for SpaceTimeGaussians
+    public var motion: SIMD16<Float>
+    public var omega: simd_quatf
+    public var trbfCenter: Float
+    public var trbfScale: Float
 
     public init(position: SIMD3<Float>,
                 normal: SIMD3<Float>,
                 color: Color,
                 opacity: Float,
                 scale: SIMD3<Float>,
-                rotation: simd_quatf) {
+                rotation: simd_quatf, //) {
+                motion: SIMD16<Float>,
+                omega: simd_quatf,
+                trbfCenter:Float,
+                trbfScale: Float){
         self.position = position
         self.normal = normal
         self.color = color
         self.opacity = opacity
         self.scale = scale
         self.rotation = rotation
+        self.motion = motion
+        self.omega = omega
+        self.trbfCenter = trbfCenter
+        self.trbfScale = trbfScale
     }
 }
