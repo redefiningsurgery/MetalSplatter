@@ -80,13 +80,32 @@ public class SplatRenderer {
         var b: Float16
         var a: Float16
     }
+    
+    // Add support for SpaceTimeGaussians
+    struct PackedHalf2 {
+        var x: Float16
+        var y: Float16
+    }
 
     // Keep in sync with Shaders.metal : Splat
     struct Splat {
         var position: MTLPackedFloat3
         var color: PackedRGBHalf4
-        var covA: PackedHalf3
-        var covB: PackedHalf3
+    // Add support for SpaceTimeGaussians
+    //    var covA: PackedHalf3
+    //    var covB: PackedHalf3
+        var quaternions0: PackedHalf2
+        var quaternions1: PackedHalf2
+        var scale0: PackedHalf2
+        var scale1: PackedHalf2
+        var motion0: PackedHalf2
+        var motion1: PackedHalf2
+        var motion2: PackedHalf2
+        var motion3: PackedHalf2
+        var motion4: PackedHalf2
+        var rotation0: PackedHalf2
+        var rotation1: PackedHalf2
+        var rbf: PackedHalf2
     }
 
     struct SplatIndexAndDepth {
@@ -505,23 +524,48 @@ extension SplatRenderer.Splat {
         }
 
         let opacity = 1 / (1 + exp(-splat.opacity))
-
+// Add support for SpaceTimeGaussians
+        var motion = splat.motion
+        var omega = splat.omega
+        var trbfScale = splat.trbfScale
+        var trbfCenter = splat.trbfCenter
+        
         self.init(position: splat.position,
                   color: .init(color.sRGBToLinear, opacity),
                   scale: scale,
-                  rotation: rotation)
+                  rotation: rotation,
+                    motion: motion,
+                  omega: omega,
+                    trbfCenter: trbfCenter,
+                    trbfScale: trbfScale)
     }
 
     init(position: SIMD3<Float>,
          color: SIMD4<Float>,
          scale: SIMD3<Float>,
-         rotation: simd_quatf) {
-        let transform = simd_float3x3(rotation) * simd_float3x3(diagonal: scale)
-        let cov3D = transform * transform.transpose
+         rotation: simd_quatf,
+        motion: SIMD16<Float>,
+         omega: simd_quatf,
+         trbfCenter: Float,
+         trbfScale: Float) {
+//        let transform = simd_float3x3(rotation) * simd_float3x3(diagonal: scale)
+//        let cov3D = transform * transform.transpose
         self.init(position: MTLPackedFloat3Make(position.x, position.y, position.z),
                   color: SplatRenderer.PackedRGBHalf4(r: Float16(color.x), g: Float16(color.y), b: Float16(color.z), a: Float16(color.w)),
-                  covA: SplatRenderer.PackedHalf3(x: Float16(cov3D[0, 0]), y: Float16(cov3D[0, 1]), z: Float16(cov3D[0, 2])),
-                  covB: SplatRenderer.PackedHalf3(x: Float16(cov3D[1, 1]), y: Float16(cov3D[1, 2]), z: Float16(cov3D[2, 2])))
+//                  covA: SplatRenderer.PackedHalf3(x: Float16(cov3D[0, 0]), y: Float16(cov3D[0, 1]), z: Float16(cov3D[0, 2])),
+//                  covB: SplatRenderer.PackedHalf3(x: Float16(cov3D[1, 1]), y: Float16(cov3D[1, 2]), z: Float16(cov3D[2, 2])))
+                  quaternions0: SplatRenderer.PackedHalf2(x: Float16(rotation.real), y: Float16(rotation.imag.x)),
+                  quaternions1: SplatRenderer.PackedHalf2(x: Float16(rotation.imag.y), y: Float16(rotation.imag.z)),
+                  scale0: SplatRenderer.PackedHalf2(x: Float16(scale.x), y: Float16(scale.y)),
+                  scale1: SplatRenderer.PackedHalf2(x: Float16(scale.z), y: 0),
+                  motion0: SplatRenderer.PackedHalf2(x: Float16(motion[0]), y: Float16(motion[1])),
+                  motion1: SplatRenderer.PackedHalf2(x: Float16(motion[2]), y: Float16(motion[3])),
+                  motion2: SplatRenderer.PackedHalf2(x: Float16(motion[4]), y: Float16(motion[5])),
+                  motion3: SplatRenderer.PackedHalf2(x: Float16(motion[6]), y: Float16(motion[7])),
+                  motion4: SplatRenderer.PackedHalf2(x: Float16(motion[8]), y: 0),
+                  rotation0: SplatRenderer.PackedHalf2(x: Float16(omega.real), y: Float16(omega.imag.x)),
+                  rotation1: SplatRenderer.PackedHalf2(x: Float16(omega.imag.y), y: Float16(omega.imag.z)),
+                  rbf: SplatRenderer.PackedHalf2(x: Float16(trbfCenter), y: Float16(trbfScale)))
     }
 }
 
