@@ -48,6 +48,7 @@ public class SplatRenderer {
         var projectionMatrix: matrix_float4x4
         var viewMatrix: matrix_float4x4
         var screenSize: SIMD2<UInt32> // Size of screen in pixels
+        var time: Float // Time value to support SpaceTimeGaussians
     }
 
     // Keep in sync with Shaders.metal : UniformsArray
@@ -303,7 +304,8 @@ public class SplatRenderer {
         for (i, viewport) in viewports.enumerated() where i <= maxViewCount {
             let uniforms = Uniforms(projectionMatrix: viewport.projectionMatrix,
                                     viewMatrix: viewport.viewMatrix,
-                                    screenSize: SIMD2(x: UInt32(viewport.screenSize.x), y: UInt32(viewport.screenSize.y)))
+                                    screenSize: SIMD2(x: UInt32(viewport.screenSize.x), y: UInt32(viewport.screenSize.y)),
+                                    time: 0.5 + sin(Float(Date().timeIntervalSince1970)) / 2 )
             self.uniforms.pointee.setUniforms(index: i, uniforms)
         }
 
@@ -556,8 +558,8 @@ extension SplatRenderer.Splat {
 //                  covB: SplatRenderer.PackedHalf3(x: Float16(cov3D[1, 1]), y: Float16(cov3D[1, 2]), z: Float16(cov3D[2, 2])))
                   quaternions0: SplatRenderer.PackedHalf2(x: Float16(rotation.real), y: Float16(rotation.imag.x)),
                   quaternions1: SplatRenderer.PackedHalf2(x: Float16(rotation.imag.y), y: Float16(rotation.imag.z)),
-                  scale0: SplatRenderer.PackedHalf2(x: Float16(scale.x), y: Float16(scale.y)),
-                  scale1: SplatRenderer.PackedHalf2(x: Float16(scale.z), y: 0),
+                  scale0: SplatRenderer.PackedHalf2(x: Float16(exp(scale.x)), y: Float16(exp(scale.y))),
+                  scale1: SplatRenderer.PackedHalf2(x: Float16(exp(scale.z)), y: 0),
                   motion0: SplatRenderer.PackedHalf2(x: Float16(motion[0]), y: Float16(motion[1])),
                   motion1: SplatRenderer.PackedHalf2(x: Float16(motion[2]), y: Float16(motion[3])),
                   motion2: SplatRenderer.PackedHalf2(x: Float16(motion[4]), y: Float16(motion[5])),
@@ -565,7 +567,7 @@ extension SplatRenderer.Splat {
                   motion4: SplatRenderer.PackedHalf2(x: Float16(motion[8]), y: 0),
                   rotation0: SplatRenderer.PackedHalf2(x: Float16(omega.real), y: Float16(omega.imag.x)),
                   rotation1: SplatRenderer.PackedHalf2(x: Float16(omega.imag.y), y: Float16(omega.imag.z)),
-                  rbf: SplatRenderer.PackedHalf2(x: Float16(trbfCenter), y: Float16(trbfScale)))
+                  rbf: SplatRenderer.PackedHalf2(x: Float16(trbfCenter), y: Float16(exp(trbfScale))))
     }
 }
 
