@@ -558,8 +558,8 @@ extension SplatRenderer.Splat {
 //                  covB: SplatRenderer.PackedHalf3(x: Float16(cov3D[1, 1]), y: Float16(cov3D[1, 2]), z: Float16(cov3D[2, 2])))
                   quaternions0: SplatRenderer.PackedHalf2(x: Float16(rotation.real), y: Float16(rotation.imag.x)),
                   quaternions1: SplatRenderer.PackedHalf2(x: Float16(rotation.imag.y), y: Float16(rotation.imag.z)),
-                  scale0: SplatRenderer.PackedHalf2(x: Float16(exp(scale.x)), y: Float16(exp(scale.y))),
-                  scale1: SplatRenderer.PackedHalf2(x: Float16(exp(scale.z)), y: 0),
+                  scale0: SplatRenderer.PackedHalf2(x: Float16(scale.x), y: Float16(scale.y)),
+                  scale1: SplatRenderer.PackedHalf2(x: Float16(scale.z), y: 0),
                   motion0: SplatRenderer.PackedHalf2(x: Float16(motion[0]), y: Float16(motion[1])),
                   motion1: SplatRenderer.PackedHalf2(x: Float16(motion[2]), y: Float16(motion[3])),
                   motion2: SplatRenderer.PackedHalf2(x: Float16(motion[4]), y: Float16(motion[5])),

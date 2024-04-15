@@ -115,6 +115,7 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
     
     float topacity = exp(-1.0 * pow(dt / trbf.y, 2.0));
     if (topacity < 0.02){
+        out.position = float4(1, 1, 0, 1);
         return out;
     }
 //    float3 cov2D = calcCovariance2D(viewPosition3, splat.covA, splat.covB,
@@ -132,9 +133,9 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
     float4 viewPosition4 = uniforms.viewMatrix * float4(splat.position+tpos, 1);
     float4 projectedCenter = uniforms.projectionMatrix * viewPosition4;
     
-// TODO: how to handle this
     float clip = 1.2 * projectedCenter.w;
     if (projectedCenter.z < -clip || projectedCenter.x < -clip || projectedCenter.x > clip || projectedCenter.y < -clip || projectedCenter.y > clip){
+        out.position = float4(1, 1, 0, 1);
         return out;
     }
     
@@ -151,33 +152,34 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
                           2.0 * (rot[1] * rot[2] + rot[0] * rot[3]), 1.0 - 2.0 * (rot[1] * rot[1] + rot[3] * rot[3]), 2.0 * (rot[2] * rot[3] - rot[0] * rot[1]),
                           2.0 * (rot[1] * rot[3] - rot[0] * rot[2]), 2.0 * (rot[2] * rot[3] + rot[0] * rot[1]), 1.0 - 2.0 * (rot[1] * rot[1] + rot[2] * rot[2]));
     
-    float3x3 M = S * R;
+    float3x3 M = S * transpose(R);
     float3x3 Vrk = 4.0 * transpose(M) * M;
     
     
+    float3 viewPos = viewPosition4.xyz;
     float4x4 viewMatrix = uniforms.viewMatrix;
     float4x4 projectionMatrix = uniforms.projectionMatrix;
     uint2 screenSize = uniforms.screenSize;
     
-    float invViewPosZ = 1 / viewPosition4.z;
+    
+    float invViewPosZ = 1 / viewPos.z;
     float invViewPosZSquared = invViewPosZ * invViewPosZ;
 
-//    float tanHalfFovX = 1 / projectionMatrix[0][0];
-//    float tanHalfFovY = 1 / projectionMatrix[1][1];
-//    float limX = 1.3 * tanHalfFovX;
-//    float limY = 1.3 * tanHalfFovY;
-//    viewPosition4.x = clamp(viewPosition4.x * invViewPosZ, -limX, limX) * viewPosition4.z;
-//    viewPosition4.y = clamp(viewPosition4.y * invViewPosZ, -limY, limY) * viewPosition4.z;
+    float tanHalfFovX = 1 / projectionMatrix[0][0];
+    float tanHalfFovY = 1 / projectionMatrix[1][1];
+    float limX = 1.3 * tanHalfFovX;
+    float limY = 1.3 * tanHalfFovY;
+    viewPos.x = clamp(viewPos.x * invViewPosZ, -limX, limX) * viewPos.z;
+    viewPos.y = clamp(viewPos.y * invViewPosZ, -limY, limY) * viewPos.z;
 
     float focalX = screenSize.x * projectionMatrix[0][0] / 2;
     float focalY = screenSize.y * projectionMatrix[1][1] / 2;
 
     float3x3 J = float3x3(
-            focalX * invViewPosZ, 0, 0,
-            0, focalY * invViewPosZ, 0,
-            -(focalX * viewPosition4.x) * invViewPosZSquared, -(focalY * viewPosition4.y) * invViewPosZSquared, 0
-        );
-    
+        focalX * invViewPosZ, 0, 0,
+        0, focalY * invViewPosZ, 0,
+        -(focalX * viewPos.x) * invViewPosZSquared, -(focalY * viewPos.y) * invViewPosZSquared, 0
+    );
     float3x3 W = float3x3(viewMatrix[0].xyz, viewMatrix[1].xyz, viewMatrix[2].xyz);
     float3x3 T = J * W;
     
@@ -194,37 +196,23 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
     decomposeCovariance(cov2D, axis1, axis2);
 
     
-    out.color = clamp(projectedCenter.z/projectedCenter.w+1.0, 0.0, 1.0) * float4(1.0,1.0,1.0,topacity) * float4(splat.color.xyzw);
-    float2 vCenter = float2(projectedCenter)/projectedCenter.w;
-//    TODO: Figure out position and relative position
-    out.position = float4(vCenter+
-                          )
-    
+    out.color = clamp ( projectedCenter.z / projectedCenter.w + 1.0, 0.0, 1.0 ) * half4( 1.0, 1.0, 1.0, topacity ) * half4 ( splat.color );
+    float2 vCenter = float2(projectedCenter.x,projectedCenter.y )/projectedCenter.w;
 
-//    float bounds = 1.2 * projectedCenter.w;
-//    if (projectedCenter.z < -projectedCenter.w ||
-//        projectedCenter.x < -bounds ||
-//        projectedCenter.x > bounds ||
-//        projectedCenter.y < -bounds ||
-//        projectedCenter.y > bounds) {
-//        out.position = float4(1, 1, 0, 1);
-//        return out;
-//    }
+    const half2 relativeCoordinatesArray[] = { { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 } };
+    half2 relativeCoordinates = relativeCoordinatesArray[vertexID];
+    half2 screenSizeFloat = half2(uniforms.screenSize.x, uniforms.screenSize.y);
+    half2 projectedScreenDelta =
+        (relativeCoordinates.x * half2(axis1) + relativeCoordinates.y * half2(axis2))
+        * 2
+        * kBoundsRadius
+        / screenSizeFloat;
 
-//    const half2 relativeCoordinatesArray[] = { { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 } };
-//    half2 relativeCoordinates = relativeCoordinatesArray[vertexID];
-//    half2 screenSizeFloat = half2(uniforms.screenSize.x, uniforms.screenSize.y);
-//    half2 projectedScreenDelta =
-//        (relativeCoordinates.x * half2(axis1) + relativeCoordinates.y * half2(axis2))
-//        * 2
-//        * kBoundsRadius
-//        / screenSizeFloat;
-
-//    out.position = float4(projectedCenter.x + projectedScreenDelta.x * projectedCenter.w,
-//                          projectedCenter.y + projectedScreenDelta.y * projectedCenter.w,
-//                          projectedCenter.z,
-//                          projectedCenter.w);
-//    out.relativePosition = kBoundsRadius * relativeCoordinates;
+    out.position = float4(projectedCenter.x + projectedScreenDelta.x * projectedCenter.w,
+                          projectedCenter.y + projectedScreenDelta.y * projectedCenter.w,
+                          projectedCenter.z,
+                          projectedCenter.w);
+    out.relativePosition = kBoundsRadius * relativeCoordinates;
 //    out.color = splat.color;
     return out;
 }
