@@ -32,10 +32,9 @@ typedef struct
     packed_half4 color;
 //    packed_half3 covA;
 //    packed_half3 covB;
-    packed_half2 quaternions0;
-    packed_half2 quaternions1;
-    packed_half2 scale0;
-    packed_half2 scale1;
+    packed_float3 quaternions0;
+    packed_float3 quaternions1;
+    packed_float3 scale;
     packed_half2 motion0;
     packed_half2 motion1;
     packed_half2 motion2;
@@ -43,7 +42,7 @@ typedef struct
     packed_half2 motion4;
     packed_half2 rotation0;
     packed_half2 rotation1;
-    packed_half2 rbf;
+    packed_float3 rbf;
 } Splat;
 
 typedef struct
@@ -67,7 +66,7 @@ typedef struct
 //              | c d |
 // (where b == c because the Gaussian covariance matrix is symmetric),
 // cov2D = ( a, b, d )
-void decomposeCovariance(float3 cov2D, thread float2 &v1, thread float2 &v2) {
+void decomposeCovariance(float3 cov2D, thread float2 &v1, thread float2 &v2, thread float &ev1, thread float &ev2) {
     float a = cov2D.x;
     float b = cov2D.y;
     float d = cov2D.z;
@@ -96,6 +95,9 @@ void decomposeCovariance(float3 cov2D, thread float2 &v1, thread float2 &v2) {
 
     v1 = eigenvector1 * sqrt(lambda1);
     v2 = eigenvector2 * sqrt(lambda2);
+    
+    ev1 = lambda1;
+    ev2 = lambda2;
 }
 
 vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
@@ -110,9 +112,8 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
     Splat splat = splatArray[instanceID];
     
     float time = uniforms.time;
-    packed_half2 trbf = splat.rbf;
+    packed_float3 trbf = splat.rbf;
     float dt = time - trbf.x;
-    
     float topacity = exp(-1.0 * pow(dt / trbf.y, 2.0));
     if (topacity < 0.02){
         out.position = float4(1, 1, 0, 1);
@@ -128,7 +129,10 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
     packed_half2 m4 = splat.motion4;
     
     float4 trot = float4(splat.rotation0.x, splat.rotation0.y, splat.rotation1.x, splat.rotation1.y) * dt;
-    float3 tpos = (float3(m0.x, m0.y, m1.x) * dt + float3(m1.y,m2.x, m2.y) * dt * dt + float3(m3.x, m3.y, m4.x) * dt * dt * dt);
+    float3 tpos = float3(m0.x, m0.y, m1.x) * dt + float3(m1.y, m2.x, m2.y) * dt*dt + float3(m3.x, m3.y, m4.x) * dt*dt*dt;
+    
+//    float4 trot = float4(1.0,0.0,0.0,0.0);
+//    float3 tpos = float3(0.0,0.0,0.0);
     
     float4 viewPosition4 = uniforms.viewMatrix * float4(splat.position+tpos, 1);
     float4 projectedCenter = uniforms.projectionMatrix * viewPosition4;
@@ -143,16 +147,16 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
     float rot_det = sqrt(dot(rot,rot));
     rot = rot / rot_det;
     float3x3 S = float3x3(
-                  splat.scale0.x, 0.0, 0.0,
-                  0.0, splat.scale0.y, 0.0,
-                  0.0, 0.0, splat.scale1.x
+                  splat.scale.x, 0.0, 0.0,
+                  0.0, splat.scale.y, 0.0,
+                  0.0, 0.0, splat.scale.z
                           );
     float3x3 R = float3x3(
                           1.0 - 2.0 * (rot[2] * rot[2] + rot[3] * rot[3]), 2.0 * (rot[1] * rot[2] - rot[0] * rot[3]), 2.0 * (rot[1] * rot[3] + rot[0] * rot[2]),
                           2.0 * (rot[1] * rot[2] + rot[0] * rot[3]), 1.0 - 2.0 * (rot[1] * rot[1] + rot[3] * rot[3]), 2.0 * (rot[2] * rot[3] - rot[0] * rot[1]),
                           2.0 * (rot[1] * rot[3] - rot[0] * rot[2]), 2.0 * (rot[2] * rot[3] + rot[0] * rot[1]), 1.0 - 2.0 * (rot[1] * rot[1] + rot[2] * rot[2]));
     
-    float3x3 M = S * transpose(R);
+    float3x3 M = S * R;
     float3x3 Vrk = 4.0 * transpose(M) * M;
     
     
@@ -187,14 +191,20 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
 
     // Apply low-pass filter: every Gaussian should be at least
     // one pixel wide/high. Discard 3rd row and column.
-    cov[0][0] += 0.3;
-    cov[1][1] += 0.3;
+//    cov[0][0] += 0.3;
+//    cov[1][1] += 0.3;
     float3 cov2D =  float3(cov[0][0], cov[0][1], cov[1][1]);
     
     float2 axis1;
     float2 axis2;
-    decomposeCovariance(cov2D, axis1, axis2);
+    float ev1;
+    float ev2;
+    decomposeCovariance(cov2D, axis1, axis2, ev1, ev2);
 
+    if (ev2<0.0){
+        out.position = float4(1, 1, 0, 1);
+        return out;
+    }
     
     out.color = clamp ( projectedCenter.z / projectedCenter.w + 1.0, 0.0, 1.0 ) * half4( 1.0, 1.0, 1.0, topacity ) * half4 ( splat.color );
     float2 vCenter = float2(projectedCenter.x,projectedCenter.y )/projectedCenter.w;

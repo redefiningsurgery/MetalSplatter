@@ -1,5 +1,8 @@
 import Foundation
 import PLYIO
+import os
+
+
 
 public class SplatPLYSceneReader: SplatSceneReader {
     enum Error: LocalizedError {
@@ -328,6 +331,7 @@ private struct PointElementMapping {
 
         switch colorPropertyIndices {
         case .sphericalHarmonic(let r, let g, let b, let sphericalHarmonicsPropertyIndices):
+            Logger().info("Case 0 \(r) \(g) \(b)")
             var shValues =
                 result.color.nonFirstOrderSphericalHarmonics ??
                 Array(repeating: .zero, count: sphericalHarmonicsPropertyIndices.count)
@@ -342,9 +346,11 @@ private struct PointElementMapping {
                                               try element.float32Value(forPropertyIndex: b),
                                               shValues)
         case .firstOrderSphericalHarmonic(let r, let g, let b):
-            result.color = .firstOrderSphericalHarmonic(try element.float32Value(forPropertyIndex: r),
-                                                        try element.float32Value(forPropertyIndex: g),
-                                                        try element.float32Value(forPropertyIndex: b))
+            let R = try element.float32Value(forPropertyIndex: r)
+            let G = try element.float32Value(forPropertyIndex: g)
+            let B = try element.float32Value(forPropertyIndex: b)
+            result.color = .firstOrderSphericalHarmonic(R, G, B)
+//            Logger().info("Case 1 \(R) \(G) \(B)")
         case .linearFloat(let r, let g, let b):
             result.color = .linearFloat(try element.float32Value(forPropertyIndex: r),
                                         try element.float32Value(forPropertyIndex: g),

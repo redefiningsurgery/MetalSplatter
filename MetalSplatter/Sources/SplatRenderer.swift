@@ -48,7 +48,7 @@ public class SplatRenderer {
         var projectionMatrix: matrix_float4x4
         var viewMatrix: matrix_float4x4
         var screenSize: SIMD2<UInt32> // Size of screen in pixels
-        var time: Float // Time value to support SpaceTimeGaussians
+        var time: Double // Time value to support SpaceTimeGaussians
     }
 
     // Keep in sync with Shaders.metal : UniformsArray
@@ -95,10 +95,9 @@ public class SplatRenderer {
     // Add support for SpaceTimeGaussians
     //    var covA: PackedHalf3
     //    var covB: PackedHalf3
-        var quaternions0: PackedHalf2
-        var quaternions1: PackedHalf2
-        var scale0: PackedHalf2
-        var scale1: PackedHalf2
+        var quaternions0: MTLPackedFloat3
+        var quaternions1: MTLPackedFloat3
+        var scale: MTLPackedFloat3
         var motion0: PackedHalf2
         var motion1: PackedHalf2
         var motion2: PackedHalf2
@@ -106,7 +105,7 @@ public class SplatRenderer {
         var motion4: PackedHalf2
         var rotation0: PackedHalf2
         var rotation1: PackedHalf2
-        var rbf: PackedHalf2
+        var rbf: MTLPackedFloat3
     }
 
     struct SplatIndexAndDepth {
@@ -302,10 +301,11 @@ public class SplatRenderer {
 
     private func updateUniforms(forViewports viewports: [ViewportDescriptor]) {
         for (i, viewport) in viewports.enumerated() where i <= maxViewCount {
+//            Self.log.info("\( 0.5 + sin(Date().timeIntervalSince1970) / 2 )");
             let uniforms = Uniforms(projectionMatrix: viewport.projectionMatrix,
                                     viewMatrix: viewport.viewMatrix,
                                     screenSize: SIMD2(x: UInt32(viewport.screenSize.x), y: UInt32(viewport.screenSize.y)),
-                                    time: 0.5 + sin(Float(Date().timeIntervalSince1970)) / 2 )
+                                    time: 0.5 + sin(Date().timeIntervalSince1970) / 2 )
             self.uniforms.pointee.setUniforms(index: i, uniforms)
         }
 
@@ -513,10 +513,14 @@ extension SplatRenderer.Splat {
         var color: SIMD3<Float>
         switch splat.color {
         case let .sphericalHarmonic(r, g, b, _), let .firstOrderSphericalHarmonic(r, g, b):
-            let SH_C0: Float = 0.28209479177387814
-            color = SIMD3(x: max(0, min(1, 0.5 + SH_C0 * r)),
-                          y: max(0, min(1, 0.5 + SH_C0 * g)),
-                          z: max(0, min(1, 0.5 + SH_C0 * b)))
+//            let SH_C0: Float = 0.28209479177387814
+//            color = SIMD3(x: max(0, min(1, 0.5 + SH_C0 * r)),
+//                          y: max(0, min(1, 0.5 + SH_C0 * g)),
+//                          z: max(0, min(1, 0.5 + SH_C0 * b)))
+//            SpaceTimeGaussians Lite model directly stores rgb instead of using First-Order Spherical Harmonics
+            color = SIMD3(x: max(0, min(1, r)),
+                          y: max(0, min(1, g)),
+                          z: max(0, min(1, b)))
         case .linearFloat(let r, let g, let b):
             color = SIMD3(x: r / 255.0, y: g / 255.0, z: b / 255.0)
         case .linearUInt8(let r, let g, let b):
@@ -526,14 +530,15 @@ extension SplatRenderer.Splat {
         }
 
         let opacity = 1 / (1 + exp(-splat.opacity))
+//        Logger().info("\(opacity)")
 // Add support for SpaceTimeGaussians
         var motion = splat.motion
         var omega = splat.omega
-        var trbfScale = splat.trbfScale
+        var trbfScale = exp(splat.trbfScale)
         var trbfCenter = splat.trbfCenter
         
         self.init(position: splat.position,
-                  color: .init(color.sRGBToLinear, opacity),
+                  color: .init(color, opacity),
                   scale: scale,
                   rotation: rotation,
                     motion: motion,
@@ -556,10 +561,9 @@ extension SplatRenderer.Splat {
                   color: SplatRenderer.PackedRGBHalf4(r: Float16(color.x), g: Float16(color.y), b: Float16(color.z), a: Float16(color.w)),
 //                  covA: SplatRenderer.PackedHalf3(x: Float16(cov3D[0, 0]), y: Float16(cov3D[0, 1]), z: Float16(cov3D[0, 2])),
 //                  covB: SplatRenderer.PackedHalf3(x: Float16(cov3D[1, 1]), y: Float16(cov3D[1, 2]), z: Float16(cov3D[2, 2])))
-                  quaternions0: SplatRenderer.PackedHalf2(x: Float16(rotation.real), y: Float16(rotation.imag.x)),
-                  quaternions1: SplatRenderer.PackedHalf2(x: Float16(rotation.imag.y), y: Float16(rotation.imag.z)),
-                  scale0: SplatRenderer.PackedHalf2(x: Float16(scale.x), y: Float16(scale.y)),
-                  scale1: SplatRenderer.PackedHalf2(x: Float16(scale.z), y: 0),
+                  quaternions0: MTLPackedFloat3Make(rotation.real, rotation.imag.x, 0.0),
+                  quaternions1: MTLPackedFloat3Make(rotation.imag.y, rotation.imag.z, 0.0),
+                  scale: MTLPackedFloat3Make(scale.x, scale.y, scale.z),
                   motion0: SplatRenderer.PackedHalf2(x: Float16(motion[0]), y: Float16(motion[1])),
                   motion1: SplatRenderer.PackedHalf2(x: Float16(motion[2]), y: Float16(motion[3])),
                   motion2: SplatRenderer.PackedHalf2(x: Float16(motion[4]), y: Float16(motion[5])),
@@ -567,7 +571,7 @@ extension SplatRenderer.Splat {
                   motion4: SplatRenderer.PackedHalf2(x: Float16(motion[8]), y: 0),
                   rotation0: SplatRenderer.PackedHalf2(x: Float16(omega.real), y: Float16(omega.imag.x)),
                   rotation1: SplatRenderer.PackedHalf2(x: Float16(omega.imag.y), y: Float16(omega.imag.z)),
-                  rbf: SplatRenderer.PackedHalf2(x: Float16(trbfCenter), y: Float16(exp(trbfScale))))
+                  rbf: MTLPackedFloat3Make(trbfCenter, trbfScale, 0.0))
     }
 }
 
