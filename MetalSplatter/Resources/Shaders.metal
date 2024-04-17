@@ -35,13 +35,11 @@ typedef struct
     packed_float3 quaternions0;
     packed_float3 quaternions1;
     packed_float3 scale;
-    packed_half2 motion0;
-    packed_half2 motion1;
-    packed_half2 motion2;
-    packed_half2 motion3;
-    packed_half2 motion4;
-    packed_half2 rotation0;
-    packed_half2 rotation1;
+    packed_float3 motion0;
+    packed_float3 motion1;
+    packed_float3 motion2;
+    packed_float3 rotation0;
+    packed_float3 rotation1;
     packed_float3 rbf;
 } Splat;
 
@@ -112,9 +110,13 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
     Splat splat = splatArray[instanceID];
     
     float time = uniforms.time;
+//    out.position = float4(1,1,0,1);
+//    out.color = half4(1, 1, 1, 1.0);
+//    return out;
     packed_float3 trbf = splat.rbf;
     float dt = time - trbf.x;
     float topacity = exp(-1.0 * pow(dt / trbf.y, 2.0));
+    
     if (topacity < 0.02){
         out.position = float4(1, 1, 0, 1);
         return out;
@@ -122,19 +124,17 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
 //    float3 cov2D = calcCovariance2D(viewPosition3, splat.covA, splat.covB,
 //                                    uniforms.viewMatrix, uniforms.projectionMatrix, uniforms.screenSize);
     
-    packed_half2 m0 = splat.motion0;
-    packed_half2 m1 = splat.motion1;
-    packed_half2 m2 = splat.motion2;
-    packed_half2 m3 = splat.motion3;
-    packed_half2 m4 = splat.motion4;
+    packed_float3 m0 = splat.motion0;
+    packed_float3 m1 = splat.motion1;
+    packed_float3 m2 = splat.motion2;
     
     float4 trot = float4(splat.rotation0.x, splat.rotation0.y, splat.rotation1.x, splat.rotation1.y) * dt;
-    float3 tpos = float3(m0.x, m0.y, m1.x) * dt + float3(m1.y, m2.x, m2.y) * dt*dt + float3(m3.x, m3.y, m4.x) * dt*dt*dt;
+    float3 tpos = float3(m0.x, m0.y, m0.z) * dt + float3(m1.x, m1.y, m1.z) * dt*dt + float3(m2.x, m2.y, m2.z) * dt*dt*dt;
     
 //    float4 trot = float4(1.0,0.0,0.0,0.0);
 //    float3 tpos = float3(0.0,0.0,0.0);
     
-    float4 viewPosition4 = uniforms.viewMatrix * float4(splat.position+tpos, 1);
+    float4 viewPosition4 = uniforms.viewMatrix * float4(splat.position + tpos, 1);
     float4 projectedCenter = uniforms.projectionMatrix * viewPosition4;
     
     float clip = 1.2 * projectedCenter.w;
@@ -156,7 +156,7 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
                           2.0 * (rot[1] * rot[2] + rot[0] * rot[3]), 1.0 - 2.0 * (rot[1] * rot[1] + rot[3] * rot[3]), 2.0 * (rot[2] * rot[3] - rot[0] * rot[1]),
                           2.0 * (rot[1] * rot[3] - rot[0] * rot[2]), 2.0 * (rot[2] * rot[3] + rot[0] * rot[1]), 1.0 - 2.0 * (rot[1] * rot[1] + rot[2] * rot[2]));
     
-    float3x3 M = S * R;
+    float3x3 M = S * transpose(R);
     float3x3 Vrk = 4.0 * transpose(M) * M;
     
     
@@ -185,14 +185,14 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
         -(focalX * viewPos.x) * invViewPosZSquared, -(focalY * viewPos.y) * invViewPosZSquared, 0
     );
     float3x3 W = float3x3(viewMatrix[0].xyz, viewMatrix[1].xyz, viewMatrix[2].xyz);
-    float3x3 T = J * W;
+    float3x3 T = transpose(W) * J;
     
     float3x3 cov = T * Vrk * transpose(T);
 
     // Apply low-pass filter: every Gaussian should be at least
     // one pixel wide/high. Discard 3rd row and column.
-//    cov[0][0] += 0.3;
-//    cov[1][1] += 0.3;
+    cov[0][0] += 0.3;
+    cov[1][1] += 0.3;
     float3 cov2D =  float3(cov[0][0], cov[0][1], cov[1][1]);
     
     float2 axis1;
@@ -222,6 +222,7 @@ vertex ColorInOut splatVertexShader(uint vertexID [[vertex_id]],
                           projectedCenter.y + projectedScreenDelta.y * projectedCenter.w,
                           projectedCenter.z,
                           projectedCenter.w);
+//    out.position = float4( vCenter.x + )
     out.relativePosition = kBoundsRadius * relativeCoordinates;
 //    out.color = splat.color;
     return out;

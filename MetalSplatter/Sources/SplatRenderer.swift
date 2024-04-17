@@ -48,7 +48,7 @@ public class SplatRenderer {
         var projectionMatrix: matrix_float4x4
         var viewMatrix: matrix_float4x4
         var screenSize: SIMD2<UInt32> // Size of screen in pixels
-        var time: Double // Time value to support SpaceTimeGaussians
+        var time: Float // Time value to support SpaceTimeGaussians
     }
 
     // Keep in sync with Shaders.metal : UniformsArray
@@ -98,13 +98,11 @@ public class SplatRenderer {
         var quaternions0: MTLPackedFloat3
         var quaternions1: MTLPackedFloat3
         var scale: MTLPackedFloat3
-        var motion0: PackedHalf2
-        var motion1: PackedHalf2
-        var motion2: PackedHalf2
-        var motion3: PackedHalf2
-        var motion4: PackedHalf2
-        var rotation0: PackedHalf2
-        var rotation1: PackedHalf2
+        var motion0: MTLPackedFloat3
+        var motion1: MTLPackedFloat3
+        var motion2: MTLPackedFloat3
+        var rotation0: MTLPackedFloat3
+        var rotation1: MTLPackedFloat3
         var rbf: MTLPackedFloat3
     }
 
@@ -301,11 +299,11 @@ public class SplatRenderer {
 
     private func updateUniforms(forViewports viewports: [ViewportDescriptor]) {
         for (i, viewport) in viewports.enumerated() where i <= maxViewCount {
-//            Self.log.info("\( 0.5 + sin(Date().timeIntervalSince1970) / 2 )");
-            let uniforms = Uniforms(projectionMatrix: viewport.projectionMatrix,
+            Self.log.info("\( Float( 0.5 + sin(Date().timeIntervalSince1970) / 2 ) )");
+            let uniforms = Uniforms( projectionMatrix: viewport.projectionMatrix,
                                     viewMatrix: viewport.viewMatrix,
                                     screenSize: SIMD2(x: UInt32(viewport.screenSize.x), y: UInt32(viewport.screenSize.y)),
-                                    time: 0.5 + sin(Date().timeIntervalSince1970) / 2 )
+                                    time: Float( 0.5 + sin(Date().timeIntervalSince1970) / 2 ) )
             self.uniforms.pointee.setUniforms(index: i, uniforms)
         }
 
@@ -508,7 +506,7 @@ extension SplatRenderer.Splat {
         let scale = SIMD3<Float>(exp(splat.scale.x),
                                  exp(splat.scale.y),
                                  exp(splat.scale.z))
-        let rotation = splat.rotation.normalized
+        let rotation = splat.rotation
 
         var color: SIMD3<Float>
         switch splat.color {
@@ -529,13 +527,15 @@ extension SplatRenderer.Splat {
             color = .zero
         }
 
-        let opacity = 1 / (1 + exp(-splat.opacity))
-//        Logger().info("\(opacity)")
+        let opacity = (1 / (1 + exp(-splat.opacity)))
+        
 // Add support for SpaceTimeGaussians
         var motion = splat.motion
         var omega = splat.omega
-        var trbfScale = exp(splat.trbfScale)
         var trbfCenter = splat.trbfCenter
+        var trbfScale = exp(splat.trbfScale)
+        
+        Logger().info("\(trbfCenter) \(trbfScale)")
         
         self.init(position: splat.position,
                   color: .init(color, opacity),
@@ -564,13 +564,11 @@ extension SplatRenderer.Splat {
                   quaternions0: MTLPackedFloat3Make(rotation.real, rotation.imag.x, 0.0),
                   quaternions1: MTLPackedFloat3Make(rotation.imag.y, rotation.imag.z, 0.0),
                   scale: MTLPackedFloat3Make(scale.x, scale.y, scale.z),
-                  motion0: SplatRenderer.PackedHalf2(x: Float16(motion[0]), y: Float16(motion[1])),
-                  motion1: SplatRenderer.PackedHalf2(x: Float16(motion[2]), y: Float16(motion[3])),
-                  motion2: SplatRenderer.PackedHalf2(x: Float16(motion[4]), y: Float16(motion[5])),
-                  motion3: SplatRenderer.PackedHalf2(x: Float16(motion[6]), y: Float16(motion[7])),
-                  motion4: SplatRenderer.PackedHalf2(x: Float16(motion[8]), y: 0),
-                  rotation0: SplatRenderer.PackedHalf2(x: Float16(omega.real), y: Float16(omega.imag.x)),
-                  rotation1: SplatRenderer.PackedHalf2(x: Float16(omega.imag.y), y: Float16(omega.imag.z)),
+                  motion0: MTLPackedFloat3Make(motion[0], motion[1], motion[2]),
+                  motion1: MTLPackedFloat3Make(motion[3], motion[4], motion[5]),
+                  motion2: MTLPackedFloat3Make(motion[6], motion[7], motion[8]),
+                  rotation0: MTLPackedFloat3Make(omega.real, omega.imag.x, 0.0),
+                  rotation1: MTLPackedFloat3Make(omega.imag.y, omega.imag.z, 0.0),
                   rbf: MTLPackedFloat3Make(trbfCenter, trbfScale, 0.0))
     }
 }
